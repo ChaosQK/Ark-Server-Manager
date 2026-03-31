@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARK Server Manager</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ─── App Shell ─────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div id="logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+      <span>ARK Manager</span>
+    </div>
+
+    <div id="nav-items">
+      <a class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </a>
+      <a class="nav-item" data-page="install">
+        <svg viewBox="0 0 24 24"><path d="M12 2v14m-7-7l7 7 7-7"/><path d="M3 20h18"/></svg>
+        Install / Update
+      </a>
+      <div class="nav-group-label">Configuration</div>
+      <a class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M2 12h2M20 12h2M19.07 19.07l-1.41-1.41M4.93 19.07l1.41-1.41"/></svg>
+        GameUserSettings
+      </a>
+      <a class="nav-item" data-page="gameini">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+        Game.ini
+      </a>
+      <a class="nav-item" data-page="launch">
+        <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Launch Args
+      </a>
+      <div class="nav-group-label">Manage</div>
+      <a class="nav-item" data-page="mods">
+        <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Mods
+      </a>
+      <a class="nav-item" data-page="logs">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Logs
+      </a>
+      <a class="nav-item" data-page="backups">
+        <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+        Backups
+      </a>
+      <a class="nav-item" data-page="rcon">
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/><path d="M6 8h.01M10 8l2 2-2 2"/></svg>
+        RCON Console
+      </a>
+    </div>
+
+    <div id="profile-section">
+      <div class="profile-label">Profile</div>
+      <div class="profile-row">
+        <select id="profile-select"></select>
+        <button id="new-profile-btn" title="New profile">+</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div id="main">
+    <!-- Top bar -->
+    <header id="topbar">
+      <div id="search-wrap">
+        <svg id="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="search-input" type="text" placeholder="Search any setting…" autocomplete="off" spellcheck="false">
+        <kbd id="search-kbd">Ctrl+F</kbd>
+      </div>
+      <div id="status-pill">
+        <span id="status-dot" class="dot stopped"></span>
+        <span id="status-text">Stopped</span>
+        <span id="uptime-display"></span>
+      </div>
+    </header>
+
+    <!-- Page content -->
+    <main id="content"></main>
+  </div>
+</div>
+
+<!-- ─── Search overlay ────────────────────────────────────────────────────── -->
+<div id="search-overlay" class="hidden">
+  <div id="search-modal">
+    <div id="search-modal-header">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="search-modal-input" type="text" placeholder="Search settings, options, flags…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div id="search-results"></div>
+    <div id="search-empty" class="hidden">No results found.</div>
+  </div>
+</div>
+
+<!-- ─── Toast ────────────────────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ─── Modal ────────────────────────────────────────────────────────────── -->
+<div id="modal-overlay" class="hidden">
+  <div id="modal">
+    <h3 id="modal-title"></h3>
+    <p id="modal-body"></p>
+    <div id="modal-actions">
+      <button id="modal-ok" class="btn btn-danger">Confirm</button>
+      <button id="modal-cancel" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
