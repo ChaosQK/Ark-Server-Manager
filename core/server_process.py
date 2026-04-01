@@ -100,16 +100,18 @@ class ServerProcess:
         log_name = datetime.now().strftime("server_%Y-%m-%d.log")
         self._log_file = os.path.join(self._manager_dir, "logs", log_name)
 
+        # ARK writes logs to ShooterGame/Saved/Logs/ShooterGame.log.
+        # We tail that file instead of piping stdout (piping stdout prevents ARK
+        # from writing to its own log file).
+        self._ark_log_path = os.path.join(
+            server_install_dir, "ShooterGame", "Saved", "Logs", "ShooterGame.log"
+        )
+
         cmd = [exe_path] + launch_args
         self._log(f"[Manager] Starting: {' '.join(cmd)}\n")
         try:
             self._proc = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
                 cwd=server_install_dir,
             )
@@ -187,18 +189,45 @@ class ServerProcess:
                 pass
 
     def _monitor(self) -> None:
-        """Read stdout/stderr from server process."""
-        pending_restart = None
+        """Tail ARK's log file and watch for the process to exit."""
+        log_pos = 0
+        # Wait briefly for ARK to create the log file
+        for _ in range(30):
+            if os.path.isfile(self._ark_log_path):
+                break
+            time.sleep(1)
+
         try:
-            for line in self._proc.stdout:
-                self._log(line)
-                if self._status == "starting":
-                    if any(m in line for m in _READY_MARKERS):
-                        self._set_status("running")
+            while self._proc.poll() is None:
+                if os.path.isfile(self._ark_log_path):
+                    try:
+                        with open(self._ark_log_path, "r", encoding="utf-8", errors="replace") as f:
+                            f.seek(log_pos)
+                            chunk = f.read()
+                            if chunk:
+                                for line in chunk.splitlines(keepends=True):
+                                    self._log(line)
+                                    if self._status == "starting":
+                                        if any(m in line for m in _READY_MARKERS):
+                                            self._set_status("running")
+                                log_pos = f.tell()
+                    except OSError:
+                        pass
+                time.sleep(1)
+
+            # Drain any remaining log lines after exit
+            if os.path.isfile(self._ark_log_path):
+                try:
+                    with open(self._ark_log_path, "r", encoding="utf-8", errors="replace") as f:
+                        f.seek(log_pos)
+                        for line in f:
+                            self._log(line)
+                except OSError:
+                    pass
         except Exception as e:
             self._log(f"[Manager] Monitor error: {e}\n")
         finally:
-            ret = self._proc.wait()
+            ret = self._proc.wait() if self._proc else 0
             self._log(f"[Manager] Server exited (code {ret}).\n")
             self._proc = None
 

@@ -1,5 +1,5 @@
 """
-ARK Server Manager — entry point.
+ARK Server Manager - entry point.
 Run with: python main.py  or  pythonw main.py (no console window)
 """
 import sys

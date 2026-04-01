@@ -1,4 +1,4 @@
-"""Dashboard tab — server status, controls, update check."""
+"""Dashboard tab - server status, controls, update check."""
 from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -40,9 +40,9 @@ class DashboardTab(tk.Frame):
         row2 = tk.Frame(status_frame, bg=BG)
         row2.pack(fill=tk.X, pady=(8, 0))
 
-        self._map_var = tk.StringVar(value="Map: —")
-        self._port_var = tk.StringVar(value="Port: —")
-        self._pid_var = tk.StringVar(value="PID: —")
+        self._map_var = tk.StringVar(value="Map: -")
+        self._port_var = tk.StringVar(value="Port: -")
+        self._pid_var = tk.StringVar(value="PID: -")
 
         for var in (self._map_var, self._port_var, self._pid_var):
             tk.Label(row2, textvariable=var, bg=BG, fg=FG,
@@ -81,7 +81,7 @@ class DashboardTab(tk.Frame):
         update_frame = ttk.LabelFrame(content, text="Server Update", padding=12)
         update_frame.pack(fill=tk.X, pady=(0, 12))
 
-        self._build_var = tk.StringVar(value="Build: —")
+        self._build_var = tk.StringVar(value="Build: -")
         tk.Label(update_frame, textvariable=self._build_var,
                   bg=BG, fg=FG, font=("Segoe UI", 10)).pack(side=tk.LEFT)
 
@@ -107,7 +107,7 @@ class DashboardTab(tk.Frame):
     def _refresh_info(self) -> None:
         profile = self._app.get_active_profile()
         la = profile.get("launch_args", {})
-        self._map_var.set(f"Map: {profile.get('map', '—')}")
+        self._map_var.set(f"Map: {profile.get('map', '-')}")
         self._port_var.set(f"Port: {la.get('Port', 7777)} / {la.get('QueryPort', 27015)}")
 
     def on_status_change(self, status: str) -> None:
@@ -118,12 +118,12 @@ class DashboardTab(tk.Frame):
         self._stop_btn.config(state=tk.NORMAL if (running or starting) else tk.DISABLED)
         self._restart_btn.config(state=tk.NORMAL if running else tk.DISABLED)
         if status == "stopped":
-            self._pid_var.set("PID: —")
+            self._pid_var.set("PID: -")
             self._uptime_var.set("")
 
     def _poll_pid(self) -> None:
         pid = self._app.server.pid
-        self._pid_var.set(f"PID: {pid}" if pid else "PID: —")
+        self._pid_var.set(f"PID: {pid}" if pid else "PID: -")
         ut = self._app.server.uptime
         if ut:
             h, rem = divmod(int(ut.total_seconds()), 3600)

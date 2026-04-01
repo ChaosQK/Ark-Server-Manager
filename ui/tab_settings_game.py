@@ -1,5 +1,5 @@
 """
-Game.ini editor — easy structured forms + raw editor.
+Game.ini editor - easy structured forms + raw editor.
 Covers difficulty, day/night, per-level stats, engram points, and raw editing.
 """
 from __future__ import annotations
@@ -146,7 +146,7 @@ class SettingsGameTab(tk.Frame):
 
         # Visual guide
         guide = tk.Label(inner,
-            text="Example — Long days, short nights:\n"
+            text="Example - Long days, short nights:\n"
                  "  Day Cycle Speed = 1.0\n"
                  "  Daytime Speed   = 0.5  ← days are twice as long\n"
                  "  Nighttime Speed = 2.0  ← nights are twice as short",
@@ -269,7 +269,7 @@ class SettingsGameTab(tk.Frame):
         # Quick fill bar
         qf = tk.Frame(frame, bg=BG)
         qf.pack(fill=tk.X, padx=8, pady=6)
-        tk.Label(qf, text="Quick fill — all levels:", bg=BG, fg=FG,
+        tk.Label(qf, text="Quick fill - all levels:", bg=BG, fg=FG,
                   font=("Segoe UI", 10)).pack(side=tk.LEFT)
         self._engram_quick_var = tk.StringVar(value="30")
         ttk.Entry(qf, textvariable=self._engram_quick_var, width=8).pack(

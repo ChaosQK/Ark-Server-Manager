@@ -1,5 +1,5 @@
 """
-ARK Server Manager — PyWebView entry point.
+ARK Server Manager - PyWebView entry point.
 Run: python main_web.py  or double-click launch.bat
 """
 import sys

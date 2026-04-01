@@ -35,7 +35,7 @@ class RconClient:
             sock.connect((host, int(port)))
             self._sock = sock
         except OSError as e:
-            raise RconError(f"Cannot connect to {host}:{port} — {e}") from e
+            raise RconError(f"Cannot connect to {host}:{port} - {e}") from e
 
         # Authenticate
         req_id = self._next_id()
@@ -47,7 +47,7 @@ class RconClient:
         if pkt[0] == -1:
             self._sock.close()
             self._sock = None
-            raise RconError("RCON authentication failed — check password")
+            raise RconError("RCON authentication failed - check password")
         self.connected = True
 
     def send_command(self, command: str) -> str:

@@ -136,7 +136,7 @@ input, select, textarea { font: inherit; outline: none; }
 #new-profile-btn:hover { background: var(--bg4); color: var(--fg); }
 
 /* ─── Main ───────────────────────────────────────────────────────────────── */
-#main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 
 /* ─── Topbar ─────────────────────────────────────────────────────────────── */
 #topbar {
@@ -201,12 +201,12 @@ input, select, textarea { font: inherit; outline: none; }
 /* ─── Content ────────────────────────────────────────────────────────────── */
 #content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  position: relative;
 }
+#content > * + * { margin-top: 16px; }
 
 /* ─── Page header ────────────────────────────────────────────────────────── */
 .page-header { margin-bottom: 4px; }
@@ -684,6 +684,18 @@ mark { background: rgba(249,226,175,.25); color: var(--yellow); border-radius: 2
 .text-yellow { color: var(--yellow); }
 .text-accent { color: var(--accent); }
 hr.divider { border: none; border-top: 1px solid var(--bg3); margin: 4px 0; }
+
+/* ─── Custom setting rows ────────────────────────────────────────────────── */
+.custom-setting-row {
+  display: grid;
+  grid-template-columns: 200px 160px 1fr 1fr auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.custom-setting-row input,
+.custom-setting-row select { padding: 6px 8px; font-size: 13px; }
+.custom-del { padding: 5px 10px !important; font-size: 15px; line-height: 1; }
 
 /* ─── Engram grid ────────────────────────────────────────────────────────── */
 .engram-grid {

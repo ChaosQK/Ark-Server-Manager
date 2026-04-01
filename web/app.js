@@ -167,7 +167,7 @@ const API = {
   async saveLaunchArgs(d)   { return this.call('save_launch_args', d); },
   async saveRconSettings(d) { return this.call('save_rcon_settings', d); },
   async getGusValues()      { return (await this.call('get_gus_values')).data || {}; },
-  async saveGusValues(d)    { return this.call('save_gus_values', d); },
+  async saveGusValues(d, custom)    { return this.call('save_gus_values', d, custom || []); },
   async syncGusToServer()   { return this.call('sync_gus_to_server'); },
   async loadGusFromServer() { return this.call('load_gus_from_server'); },
   async getGameIniValues()  { return (await this.call('get_game_ini_values')).data || {}; },
@@ -395,6 +395,10 @@ const Router = {
   navigate(page, scrollToId) {
     State.page = page;
     qsa('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+    // Reset any inline styles set by previous pages (e.g. logs sets display:flex)
+    const content = qs('#content');
+    content.style.display = '';
+    content.style.flexDirection = '';
     Pages[page].render();
     if (scrollToId) {
       setTimeout(() => {
@@ -505,12 +509,12 @@ const Pages = {
       statsCard.innerHTML = `
         <div class="card-title">Server Info</div>
         <div class="stat-grid">
-          <div class="stat-card"><div class="stat-value">${esc(p.map||'—')}</div><div class="stat-label">Map</div></div>
+          <div class="stat-card"><div class="stat-value">${esc(p.map||'-')}</div><div class="stat-label">Map</div></div>
           <div class="stat-card"><div class="stat-value">${esc(String(la.MaxPlayers||70))}</div><div class="stat-label">Max Players</div></div>
           <div class="stat-card"><div class="stat-value">${esc(String(la.Port||7777))}</div><div class="stat-label">Game Port</div></div>
           <div class="stat-card"><div class="stat-value">${esc(String(la.QueryPort||27015))}</div><div class="stat-label">Query Port</div></div>
           <div class="stat-card"><div class="stat-value">${esc(p.game||'ase').toUpperCase()}</div><div class="stat-label">Game</div></div>
-          <div class="stat-card"><div class="stat-value" id="dash-update-val">—</div><div class="stat-label">Local Build</div></div>
+          <div class="stat-card"><div class="stat-value" id="dash-update-val">-</div><div class="stat-label">Local Build</div></div>
         </div>`;
       frag.appendChild(statsCard);
 
@@ -565,7 +569,7 @@ const Pages = {
           <button class="btn btn-ghost" id="scmd-browse">Browse…</button>
           <button class="btn btn-ghost" id="scmd-detect">Auto-detect</button>
         </div>
-        <div id="scmd-status" class="field-hint" style="margin-bottom:10px">${hasScmd ? `<span class="text-green">✓ Found: ${esc(info.detected)}</span>` : '<span class="text-red">✗ SteamCMD not found — download it below</span>'}</div>
+        <div id="scmd-status" class="field-hint" style="margin-bottom:10px">${hasScmd ? `<span class="text-green">✓ Found: ${esc(info.detected)}</span>` : '<span class="text-red">✗ SteamCMD not found - download it below</span>'}</div>
         <button class="btn btn-ghost" id="scmd-download">Download SteamCMD…</button>`;
       c.appendChild(sc);
 
@@ -595,12 +599,22 @@ const Pages = {
           </div>
           <button class="btn btn-ghost" id="dir-browse">Browse…</button>
         </div>
-        <div class="gap-row" style="margin-bottom:14px">
+        <div class="gap-row" style="margin-bottom:10px;flex-wrap:wrap">
           <label class="field-label" style="white-space:nowrap">Game:</label>
           <select id="game-select" style="width:auto">
             <option value="ase" ${profile.game==='ase'?'selected':''}>ARK: Survival Evolved (ASE)</option>
             <option value="asa" ${profile.game==='asa'?'selected':''}>ARK: Survival Ascended (ASA)</option>
           </select>
+          <label class="field-label" style="white-space:nowrap;margin-left:12px">Branch:</label>
+          <select id="branch-select" style="width:auto">
+            <option value="" ${!profile.branch?'selected':''}>Live (default)</option>
+            <option value="experimental" ${profile.branch==='experimental'?'selected':''}>Experimental</option>
+            <option value="arkpublic" ${profile.branch==='arkpublic'?'selected':''}>Public Beta</option>
+            <option value="__custom__" ${profile.branch&&!['','experimental','arkpublic'].includes(profile.branch)?'selected':''}>Custom…</option>
+          </select>
+          <input type="text" id="branch-custom" placeholder="Branch name"
+                 value="${esc(profile.branch&&!['','experimental','arkpublic'].includes(profile.branch)?profile.branch:'')}"
+                 style="width:140px;${profile.branch&&!['','experimental','arkpublic'].includes(profile.branch)?'':'display:none'}">
         </div>
         <div class="btn-row">
           <button class="btn btn-primary" id="install-btn">Install / Update Server</button>
@@ -617,11 +631,27 @@ const Pages = {
       };
       si.querySelector('#game-select').onchange = async e => { await API.saveProfileBasic({game:e.target.value}); State.profile.game=e.target.value; };
       si.querySelector('#install-dir').onchange = async e => { await API.saveProfileBasic({server_install_dir:e.target.value}); State.profile.server_install_dir=e.target.value; };
+      si.querySelector('#branch-select').onchange = async e => {
+        const custom = si.querySelector('#branch-custom');
+        custom.style.display = e.target.value === '__custom__' ? '' : 'none';
+        if (e.target.value !== '__custom__') {
+          await API.saveProfileBasic({branch: e.target.value});
+          State.profile.branch = e.target.value;
+        }
+      };
+      si.querySelector('#branch-custom').onchange = async e => {
+        await API.saveProfileBasic({branch: e.target.value.trim()});
+        State.profile.branch = e.target.value.trim();
+      };
 
       si.querySelector('#install-btn').onclick = async () => {
         const dir = si.querySelector('#install-dir').value;
         if (!dir) { toast('Set install directory first', 'error'); return; }
-        await API.saveProfileBasic({server_install_dir:dir, game:si.querySelector('#game-select').value});
+        const branchSel = si.querySelector('#branch-select');
+        const branch = branchSel.value === '__custom__'
+          ? si.querySelector('#branch-custom').value.trim()
+          : branchSel.value;
+        await API.saveProfileBasic({server_install_dir:dir, game:si.querySelector('#game-select').value, branch});
         State.profile.server_install_dir = dir;
         const r = await API.installServer();
         if (!r.ok) { toast(r.error, 'error'); return; }
@@ -645,12 +675,19 @@ const Pages = {
       lc.innerHTML = `
         <div style="display:flex;align-items:center;margin-bottom:8px">
           <span class="card-title" style="margin-bottom:0">Output</span>
-          <button class="btn btn-ghost ml-auto" id="clear-log-btn" style="padding:4px 10px;font-size:12px">Clear</button>
+          <div class="btn-row ml-auto" style="gap:6px">
+            <button class="btn btn-ghost" id="copy-log-btn" style="padding:4px 10px;font-size:12px">Copy</button>
+            <button class="btn btn-ghost" id="clear-log-btn" style="padding:4px 10px;font-size:12px">Clear</button>
+          </div>
         </div>
-        <div id="install-log" style="flex:1;background:var(--bg);border:1px solid var(--bg3);border-radius:4px;padding:10px;font-family:Consolas,monospace;font-size:12px;color:var(--fg2);overflow-y:auto;min-height:200px;max-height:320px;white-space:pre-wrap;word-break:break-all"></div>`;
+        <div id="install-log" style="flex:1;background:var(--bg);border:1px solid var(--bg3);border-radius:4px;padding:10px;font-family:Consolas,monospace;font-size:12px;color:var(--fg2);overflow-y:auto;min-height:200px;max-height:320px;white-space:pre-wrap;word-break:break-all;user-select:text;cursor:text"></div>`;
       c.appendChild(lc);
       Pages.install._logEl = lc.querySelector('#install-log');
       lc.querySelector('#clear-log-btn').onclick = () => { if (Pages.install._logEl) Pages.install._logEl.innerHTML = ''; };
+      lc.querySelector('#copy-log-btn').onclick = () => {
+        const text = Pages.install._logEl ? Pages.install._logEl.innerText : '';
+        navigator.clipboard.writeText(text).then(() => toast('Log copied', 'success'), () => toast('Copy failed', 'error'));
+      };
     },
 
     _appendLog(line) {
@@ -675,7 +712,7 @@ const Pages = {
       c.innerHTML = `
         <div class="page-header">
           <div class="page-title">GameUserSettings.ini</div>
-          <div class="page-subtitle">Server configuration — all settings in one place</div>
+          <div class="page-subtitle">Server configuration - all settings in one place</div>
         </div>`;
 
       // Toolbar
@@ -687,7 +724,7 @@ const Pages = {
         <button class="btn btn-ghost" id="gus-sync">⟳ Sync to Server</button>
         <button class="btn btn-ghost" id="gus-load">↓ Load from Server</button>
         <select id="gus-preset" style="background:var(--bg3);border:1px solid var(--bg4);color:var(--fg);padding:6px 10px;border-radius:4px;font-size:13px">
-          <option value="">— Apply Preset —</option>
+          <option value="">- Apply Preset -</option>
           ${Object.keys(GUS_PRESETS).map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('')}
         </select>`;
       c.appendChild(tb);
@@ -702,8 +739,15 @@ const Pages = {
       GUS_SETTINGS.forEach(cat => {
         const ch = el('div','chip',cat.category);
         ch.onclick = () => {
+          const content = document.getElementById('content');
           const target = document.getElementById(`cat-${cat.category}`);
-          if (target) target.scrollIntoView({behavior:'smooth', block:'start'});
+          if (!target || !content) return;
+          // offsetTop traversal up to #content (position:relative makes it an
+          // offsetParent boundary). Reads natural DOM position, not visual
+          // sticky position, so scrolling back up to pinned headers works.
+          let top = 0, node = target;
+          while (node && node !== content) { top += node.offsetTop; node = node.offsetParent; }
+          content.scrollTo({ top, behavior: 'smooth' });
         };
         chips.appendChild(ch);
       });
@@ -727,6 +771,19 @@ const Pages = {
         });
       });
       c.appendChild(list);
+
+      // Custom settings card
+      const customCard = el('div','card');
+      customCard.id = 'gus-custom-card';
+      customCard.innerHTML = `
+        <div class="card-title">CUSTOM SETTINGS</div>
+        <div class="field-hint" style="margin-bottom:10px;color:var(--fg3)">
+          Add any GameUserSettings.ini key not listed above. Changes are saved with the profile.
+        </div>
+        <div id="custom-rows"></div>
+        <button class="btn btn-ghost" id="add-custom-row" style="margin-top:8px">+ Add Custom Setting</button>`;
+      c.appendChild(customCard);
+      qs('#add-custom-row').onclick = () => this._addCustomRow();
 
       // Wire up buttons
       tb.querySelector('#gus-save').onclick = () => this.save();
@@ -784,20 +841,57 @@ const Pages = {
       return row;
     },
 
+    _addCustomRow(section='ServerSettings', key='', value='') {
+      const container = qs('#custom-rows');
+      if (!container) return;
+      const KNOWN_SECTIONS = ['ServerSettings', '/Script/ShooterGame.ShooterGameMode',
+        '/Script/Engine.GameSession', 'SessionSettings'];
+      const isKnown = KNOWN_SECTIONS.includes(section);
+      const row = document.createElement('div');
+      row.className = 'custom-setting-row';
+      row.innerHTML = `
+        <select class="custom-section">
+          ${KNOWN_SECTIONS.map(s => `<option value="${esc(s)}" ${s===section&&isKnown?'selected':''}>${esc(s)}</option>`).join('')}
+          <option value="__other__" ${!isKnown?'selected':''}>Other…</option>
+        </select>
+        <input type="text" class="custom-section-other" placeholder="Section name"
+               value="${!isKnown?esc(section):''}" style="${isKnown?'display:none':''}">
+        <input type="text" class="custom-key" placeholder="Key" value="${esc(key)}">
+        <input type="text" class="custom-value" placeholder="Value" value="${esc(value)}">
+        <button class="btn btn-ghost custom-del" title="Remove">×</button>`;
+      row.querySelector('.custom-section').onchange = function() {
+        const other = row.querySelector('.custom-section-other');
+        other.style.display = this.value === '__other__' ? '' : 'none';
+      };
+      row.querySelector('.custom-del').onclick = () => row.remove();
+      container.appendChild(row);
+    },
+
     _fillValues() {
       const list = qs('.settings-list');
       if (!list) return;
       const vs = this.values;
+      const sections = vs.__sections__ || {};
+      // Fill known fields
       qsa('[data-key]', list).forEach(el => {
         const k = el.dataset.key;
         if (!(k in vs)) return;
         if (el.dataset.type === 'check') {
-          const on = String(vs[k]).toLowerCase() === 'true';
-          el.classList.toggle('on', on);
+          el.classList.toggle('on', String(vs[k]).toLowerCase() === 'true');
         } else {
           el.value = vs[k];
         }
       });
+      // Populate custom rows with keys not in the known GUS_SETTINGS list
+      const knownKeys = new Set(GUS_SETTINGS.flatMap(cat => cat.fields.map(f => f.k)));
+      const customContainer = qs('#custom-rows');
+      if (customContainer) {
+        customContainer.innerHTML = '';
+        Object.entries(vs).forEach(([k, v]) => {
+          if (k === '__sections__') return;
+          if (!knownKeys.has(k)) this._addCustomRow(sections[k] || 'ServerSettings', k, v);
+        });
+      }
     },
 
     _collectValues() {
@@ -813,9 +907,21 @@ const Pages = {
       return out;
     },
 
+    _collectCustom() {
+      return qsa('.custom-setting-row', qs('#gus-custom-card') || document).map(row => {
+        const sel = row.querySelector('.custom-section');
+        const s = sel.value === '__other__'
+          ? (row.querySelector('.custom-section-other').value.trim() || 'ServerSettings')
+          : sel.value;
+        return { s, k: row.querySelector('.custom-key').value.trim(),
+                    v: row.querySelector('.custom-value').value };
+      }).filter(e => e.k);
+    },
+
     async save() {
       const vals = this._collectValues();
-      const r = await API.saveGusValues(vals);
+      const custom = this._collectCustom();
+      const r = await API.saveGusValues(vals, custom);
       r.ok ? toast('GameUserSettings.ini saved to profile', 'success') : toast(r.error, 'error');
     },
 
@@ -844,7 +950,7 @@ const Pages = {
         if (el.dataset.type === 'check') el.classList.toggle('on', v.toLowerCase()==='true');
         else el.value = v;
       });
-      toast(`Preset "${name}" applied — click Save to keep`, 'info');
+      toast(`Preset "${name}" applied - click Save to keep`, 'info');
     }
   },
 
@@ -888,7 +994,7 @@ const Pages = {
         <div class="settings-list" style="background:var(--bg2);border:1px solid var(--bg3);border-radius:8px;overflow:hidden">
           ${this._infoRow('Use <b>Override Official Difficulty</b> for precise control. After changing, send <code>destroywilddinos</code> via RCON.')}
           ${this._sRow('gi-OverrideOfficialDifficulty','Override Official Difficulty','5.0','Max dino level = value × 30 &nbsp;(5.0 → L150 &nbsp;|&nbsp; 6.0 → L180 &nbsp;|&nbsp; 8.0 → L240)',true)}
-          ${this._sRow('gi-DifficultyOffset','Difficulty Offset','0.2','0.2 = up to L60, 1.0 = up to L30 — usually leave this alone when using Override above')}
+          ${this._sRow('gi-DifficultyOffset','Difficulty Offset','0.2','0.2 = up to L60, 1.0 = up to L30 - usually leave this alone when using Override above')}
           ${this._sRow('gi-MaxTamedDinos','Max Tamed Dinos (server-wide)','5000','Total tamed creatures allowed on the entire server at once')}
           ${this._sRow('gi-MaxPersonalTamedDinos','Max Personal Tamed Dinos','500','Maximum tamed creatures per tribe')}
           ${this._sRow('gi-DinoCountMultiplier','Wild Dino Count Multiplier','1.0','Scales the number of wild creatures spawned on the map')}
@@ -898,10 +1004,10 @@ const Pages = {
     _renderDayNight(p) {
       p.innerHTML = `
         <div class="settings-list" style="background:var(--bg2);border:1px solid var(--bg3);border-radius:8px;overflow:hidden">
-          ${this._infoRow('Example — Long days, short nights: Day Cycle=1.0 &nbsp;|&nbsp; Daytime=0.5 &nbsp;|&nbsp; Nighttime=2.0')}
+          ${this._infoRow('Example - Long days, short nights: Day Cycle=1.0 &nbsp;|&nbsp; Daytime=0.5 &nbsp;|&nbsp; Nighttime=2.0')}
           ${this._sRow('gi-DayCycleSpeedScale','Day Cycle Speed','1.0','Overall speed of the entire day/night cycle (2.0 = days pass twice as fast overall)')}
-          ${this._sRow('gi-DayTimeSpeedScale','Daytime Speed','1.0','Relative speed of daytime only — higher = shorter days')}
-          ${this._sRow('gi-NightTimeSpeedScale','Nighttime Speed','1.0','Relative speed of nighttime only — higher = shorter nights')}
+          ${this._sRow('gi-DayTimeSpeedScale','Daytime Speed','1.0','Relative speed of daytime only - higher = shorter days')}
+          ${this._sRow('gi-NightTimeSpeedScale','Nighttime Speed','1.0','Relative speed of nighttime only - higher = shorter nights')}
         </div>`;
     },
 
@@ -947,11 +1053,11 @@ const Pages = {
       const cells = Array.from({length:180},(_,i) => `
         <div class="engram-cell">
           <span class="engram-lbl">L${i+1}</span>
-          <input type="text" id="ep-${i}" placeholder="—" style="width:52px">
+          <input type="text" id="ep-${i}" placeholder="-" style="width:52px">
         </div>`).join('');
       p.innerHTML = `
         <div class="gap-row" style="margin-bottom:12px;flex-wrap:wrap">
-          <span style="color:var(--fg2);font-size:13px">Quick fill — all levels:</span>
+          <span style="color:var(--fg2);font-size:13px">Quick fill - all levels:</span>
           <input type="text" id="ep-quick" value="30" style="width:70px">
           <span style="color:var(--fg3);font-size:13px">pts/level</span>
           <button class="btn btn-ghost" id="ep-fill" style="padding:5px 10px;font-size:12px">Apply</button>
@@ -1468,12 +1574,27 @@ const Pages = {
         files.forEach(f => { const o=document.createElement('option'); o.value=f; o.textContent=f; sel.appendChild(o); });
       });
 
-      // Load existing buffer
-      API.getLogLines(500).then(lines => lines.forEach(l => Pages.logs._appendLine(l)));
+      // Load existing buffer then start polling for new lines
+      API.getLogLines(500).then(lines => {
+        Pages.logs._lineCount = lines.length;
+        lines.forEach(l => Pages.logs._appendLine(l));
+      });
       Pages.logs._startLive();
     },
 
-    _startLive() {},  // live lines come via event bus
+    _lineCount: 0,
+    _liveTimer: null,
+    _startLive() {
+      clearTimeout(Pages.logs._liveTimer);
+      Pages.logs._liveTimer = setTimeout(async function poll() {
+        if (State.page !== 'logs') return;  // stop when navigated away
+        const lines = await API.getLogLines(2000);
+        const newLines = lines.slice(Pages.logs._lineCount);
+        newLines.forEach(l => Pages.logs._appendLine(l));
+        Pages.logs._lineCount = lines.length;
+        Pages.logs._liveTimer = setTimeout(poll, 1000);
+      }, 1000);
+    },
 
     _appendLine(line) {
       if (!line) return;
@@ -1481,7 +1602,8 @@ const Pages = {
       if (!out) return;
       const span = document.createElement('span');
       const l = line.toLowerCase();
-      if (l.includes('[manager]')||l.includes('[steamcmd]')||l.includes('[mods]')) span.className='log-manager';
+      if (l.startsWith('[ark]')) span.className='log-default';
+      else if (l.includes('[manager]')||l.includes('[steamcmd]')||l.includes('[mods]')) span.className='log-manager';
       else if (l.includes('error')||l.includes('fatal')||l.includes('exception')) span.className='log-error';
       else if (l.includes('warning')||l.includes('warn')) span.className='log-warning';
       else if (l.includes('join')||l.includes('connected')) span.className='log-success';
@@ -1541,7 +1663,7 @@ const Pages = {
           <button class="toggle ${bk.enabled?'on':''}" id="bk-enabled"></button>
           <span class="toggle-label">Auto-backup every</span>
           <input type="text" id="bk-interval" value="${bk.interval_minutes||60}" style="width:60px">
-          <span class="toggle-label">minutes &nbsp; — keep last</span>
+          <span class="toggle-label">minutes &nbsp; - keep last</span>
           <input type="text" id="bk-keep" value="${bk.keep_count||10}" style="width:60px">
           <span class="toggle-label">backups</span>
           <button class="btn btn-primary" id="bk-apply" style="margin-left:8px">Apply Schedule</button>
@@ -1792,13 +1914,23 @@ EventBus.on('install_log', line => {
   if (State.page === 'logs')    Pages.logs._appendLine(line);
 });
 
-EventBus.on('install_done', data => {
+EventBus.on('install_done', async data => {
   const msg = data.msg || (data.ok ? 'Done!' : 'Failed');
   toast(msg, data.ok ? 'success' : 'error');
   const btn = document.getElementById('install-btn');
   if (btn) { btn.disabled=false; }
   const bar = document.getElementById('install-progress');
   if (bar) bar.classList.remove('indeterminate');
+  // Refresh SteamCMD status label after a download completes
+  const statusEl = document.getElementById('scmd-status');
+  const pathEl   = document.getElementById('scmd-path');
+  if (statusEl && data.ok) {
+    const inf = await API.getSteamcmdInfo();
+    if (inf && inf.detected) {
+      if (pathEl) pathEl.value = inf.detected;
+      statusEl.innerHTML = `<span class="text-green">✓ Found: ${esc(inf.detected)}</span>`;
+    }
+  }
 });
 
 EventBus.on('install_progress', pct => {
@@ -1820,16 +1952,14 @@ EventBus.on('mod_install_done', data => {
 EventBus.on('update_check', data => {
   const el = document.getElementById('update-status');
   const buildEl = document.getElementById('dash-update-val');
-  if (buildEl) buildEl.textContent = data.local || '—';
+  if (buildEl) buildEl.textContent = data.local || '-';
   if (el) {
     if (data.available) { el.innerHTML = `<span class="text-yellow">⚠ Update available! → ${esc(data.remote)}</span>`; }
     else { el.innerHTML = `<span class="text-green">✓ Up to date (build ${esc(data.local)})</span>`; }
   }
 });
 
-EventBus.on('server_log', line => {
-  if (State.page === 'logs') Pages.logs._appendLine(line);
-});
+// server_log events are no longer pushed - logs page polls get_log_lines() instead
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  INIT

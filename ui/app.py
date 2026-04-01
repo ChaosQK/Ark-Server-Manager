@@ -121,7 +121,7 @@ class App:
 
         # Status bar vars
         self._status_text = tk.StringVar(value="Stopped")
-        self._players_text = tk.StringVar(value="Players: —")
+        self._players_text = tk.StringVar(value="Players: -")
         self._uptime_text = tk.StringVar(value="")
         self._profile_var = tk.StringVar(value=self.config.get("active_profile", "default"))
 

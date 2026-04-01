@@ -1,5 +1,5 @@
 """
-Launch arguments builder — based on the ARK server configuration wiki.
+Launch arguments builder - based on the ARK server configuration wiki.
 """
 from __future__ import annotations
 import tkinter as tk
@@ -93,7 +93,7 @@ def build_launch_args(profile: dict) -> list[str]:
     if la.get("ClusterId"):
         parts.append(f"?AltSaveDirectoryName={la['ClusterId']}")
 
-    combined = "?".join(parts)
+    combined = "".join(parts)  # parts already carry their own leading "?"
     args = [combined]
 
     # Extra ?-style args
@@ -352,7 +352,7 @@ class CmdArgsTab(tk.Frame):
         self._nb.add(frame, text="  Preview  ")
 
         tk.Label(frame,
-                  text="Full launch command — copy this to run your server manually.",
+                  text="Full launch command - copy this to run your server manually.",
                   bg=BG3, fg=FG2, font=("Segoe UI", 9), padx=12, pady=6,
                   justify="left").pack(fill=tk.X)
 

@@ -1,4 +1,4 @@
-"""Mod manager tab — install/remove/update Workshop mods."""
+"""Mod manager tab - install/remove/update Workshop mods."""
 from __future__ import annotations
 import os
 import queue
