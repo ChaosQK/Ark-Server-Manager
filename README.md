@@ -9,6 +9,7 @@ A desktop application for managing ARK: Survival Evolved and ARK: Survival Ascen
 ## Features
 
 - **Install & Update** - Download SteamCMD and install/update your ARK server with one click. Supports branch selection (Live, Experimental, Public Beta, or custom)
+- **Import Existing Server** - Point the app at an already-installed server; game type is auto-detected and config files are edited in-place
 - **Start / Stop / Restart** - Launch and manage the server process with auto-restart support
 - **Live Logs** - Real-time server log viewer with search, colour-coded output, and copy-to-clipboard
 - **GameUserSettings.ini** - Full settings editor with 60+ fields, category jump chips, live search filter, presets (Official, Boosted ×3/×5/×10, Solo), and custom key/value support
@@ -55,6 +56,34 @@ python main_web.py
 
 ---
 
+## Standalone Executable
+
+To build a single self-contained `ArkServerManager.exe` (no Python installation required on the target machine):
+
+**Run `build.bat`** — it installs PyInstaller, bundles all assets, and outputs `dist\ArkServerManager.exe`.
+
+```
+build.bat
+```
+
+> **Prerequisite:** [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) must be installed on the machine running the `.exe`. It ships with Windows 11 and most up-to-date Windows 10 installs, so it is usually already present.
+
+The executable is fully standalone — copy `dist\ArkServerManager.exe` anywhere and run it directly. User data (config, backups) is stored in `%LOCALAPPDATA%\ARKServerManager\` as usual.
+
+---
+
+## Importing an Existing Server
+
+If you already have an ARK server installed, go to **Install / Update** and use the **Import Existing Server** card:
+
+1. Click **Browse…** and select the server's root directory (the folder containing `ShooterGame\`)
+2. Click **Import** — the game type (ASE/ASA) is auto-detected from the installed executables
+3. `GameUserSettings.ini` and `Game.ini` are read and written **directly** from the server's own `ShooterGame\Saved\Config\WindowsServer\` folder — no separate copy is kept
+
+> If the config folder does not exist yet (fresh install, no first-launch), it will be created automatically the first time you save settings from the app.
+
+---
+
 ## First-Time Setup
 
 1. Go to **Install / Update**
@@ -72,9 +101,10 @@ python main_web.py
 
 ```
 ark-server-manager/
-├── main_web.py          # Entry point (PyWebView)
+├── main_web.py          # Entry point (PyWebView); handles frozen/PyInstaller paths
 ├── api.py               # Python ↔ JS API bridge
-├── launch.bat           # Windows launcher
+├── launch.bat           # Windows launcher (runs from source)
+├── build.bat            # Builds dist\ArkServerManager.exe via PyInstaller
 ├── requirements.txt
 │
 ├── core/

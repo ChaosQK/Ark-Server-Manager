@@ -106,10 +106,20 @@ class Api:
         return self._config.setdefault("profiles", {}).setdefault(name, self._default_profile())
 
     def _gus_path(self, profile_name: str | None = None) -> str:
+        profile = self._get_profile(profile_name)
+        server_dir = profile.get("server_install_dir", "")
+        if server_dir:
+            return os.path.join(server_dir, "ShooterGame", "Saved",
+                                "Config", "WindowsServer", "GameUserSettings.ini")
         name = profile_name or self._config.get("active_profile", "default")
         return os.path.join(_APPDATA_DIR, "profiles", name, "GameUserSettings.ini")
 
     def _game_ini_path(self, profile_name: str | None = None) -> str:
+        profile = self._get_profile(profile_name)
+        server_dir = profile.get("server_install_dir", "")
+        if server_dir:
+            return os.path.join(server_dir, "ShooterGame", "Saved",
+                                "Config", "WindowsServer", "Game.ini")
         name = profile_name or self._config.get("active_profile", "default")
         return os.path.join(_APPDATA_DIR, "profiles", name, "Game.ini")
 
@@ -246,21 +256,28 @@ class Api:
         if not server_dir:
             return _err("Server install directory not set")
         src = self._gus_path()
+        dst_dir = os.path.join(server_dir, "ShooterGame", "Saved", "Config", "WindowsServer")
+        dst = os.path.join(dst_dir, "GameUserSettings.ini")
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return _ok()  # Already saving directly to server config
         if not os.path.isfile(src):
             return _err("Profile GUS.ini not found - save it first")
-        dst_dir = os.path.join(server_dir, "ShooterGame", "Saved", "Config", "WindowsServer")
         os.makedirs(dst_dir, exist_ok=True)
-        shutil.copy2(src, os.path.join(dst_dir, "GameUserSettings.ini"))
+        shutil.copy2(src, dst)
         return _ok()
 
     def load_gus_from_server(self):
         profile = self._get_profile()
         server_dir = profile.get("server_install_dir", "")
+        if not server_dir:
+            return _err("Server install directory not set")
         src = os.path.join(server_dir, "ShooterGame", "Saved",
-                            "Config", "WindowsServer", "GameUserSettings.ini")
+                           "Config", "WindowsServer", "GameUserSettings.ini")
         if not os.path.isfile(src):
             return _err(f"File not found: {src}")
         dst = self._gus_path()
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return _ok()  # Already reading directly from server config
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copy2(src, dst)
         return _ok()
@@ -316,21 +333,28 @@ class Api:
         if not server_dir:
             return _err("Server install directory not set")
         src = self._game_ini_path()
+        dst_dir = os.path.join(server_dir, "ShooterGame", "Saved", "Config", "WindowsServer")
+        dst = os.path.join(dst_dir, "Game.ini")
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return _ok()  # Already saving directly to server config
         if not os.path.isfile(src):
             return _err("Profile Game.ini not found - save it first")
-        dst_dir = os.path.join(server_dir, "ShooterGame", "Saved", "Config", "WindowsServer")
         os.makedirs(dst_dir, exist_ok=True)
-        shutil.copy2(src, os.path.join(dst_dir, "Game.ini"))
+        shutil.copy2(src, dst)
         return _ok()
 
     def load_game_ini_from_server(self):
         profile = self._get_profile()
         server_dir = profile.get("server_install_dir", "")
+        if not server_dir:
+            return _err("Server install directory not set")
         src = os.path.join(server_dir, "ShooterGame", "Saved",
-                            "Config", "WindowsServer", "Game.ini")
+                           "Config", "WindowsServer", "Game.ini")
         if not os.path.isfile(src):
             return _err(f"File not found: {src}")
         dst = self._game_ini_path()
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return _ok()  # Already reading directly from server config
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copy2(src, dst)
         return _ok()
@@ -687,6 +711,37 @@ class Api:
     # ------------------------------------------------------------------ #
     #  Misc                                                                #
     # ------------------------------------------------------------------ #
+
+    def import_server(self, server_dir: str):
+        """Import an existing ARK server installation into the active profile.
+        Auto-detects game type (ASE/ASA) and reports which config files are present."""
+        server_dir = server_dir.strip()
+        if not server_dir or not os.path.isdir(server_dir):
+            return _err(f"Directory not found: {server_dir}")
+
+        ase_exe = os.path.join(server_dir, "ShooterGame", "Binaries", "Win64", "ShooterGameServer.exe")
+        asa_exe = os.path.join(server_dir, "ShooterGame", "Binaries", "Win64", "ArkAscendedServer.exe")
+        if os.path.isfile(asa_exe):
+            game = "asa"
+        elif os.path.isfile(ase_exe):
+            game = "ase"
+        else:
+            game = None  # Can't detect; user can change it manually
+
+        profile = self._get_profile()
+        profile["server_install_dir"] = server_dir
+        if game:
+            profile["game"] = game
+        self._save_config()
+
+        cfg_dir = os.path.join(server_dir, "ShooterGame", "Saved", "Config", "WindowsServer")
+        return _ok({
+            "server_dir": server_dir,
+            "game": game or profile.get("game", "ase"),
+            "game_detected": game is not None,
+            "has_gus": os.path.isfile(os.path.join(cfg_dir, "GameUserSettings.ini")),
+            "has_game_ini": os.path.isfile(os.path.join(cfg_dir, "Game.ini")),
+        })
 
     def get_manager_dir(self):
         return _ok(_APPDATA_DIR)

@@ -183,6 +183,7 @@ const API = {
   async getSteamcmdInfo()   { return (await this.call('get_steamcmd_info')).data; },
   async setSteamcmdPath(p)  { return this.call('set_steamcmd_path', p); },
   async downloadSteamcmd(d) { return this.call('download_steamcmd', d); },
+  async importServer(d)     { return this.call('import_server', d); },
   async installServer()     { return this.call('install_server'); },
   async cancelInstall()     { return this.call('cancel_install'); },
   async checkUpdate()       { return this.call('check_update'); },
@@ -667,6 +668,52 @@ const Pages = {
         si.querySelector('#install-progress').classList.remove('indeterminate');
       };
 
+      // Import existing server card
+      const ic = el('div','card');
+      ic.innerHTML = `
+        <div class="card-title">Import Existing Server</div>
+        <div class="field-hint" style="margin-bottom:10px">Already have an ARK server installed? Select its root directory to import it into this profile. The game type will be auto-detected and GameUserSettings.ini / Game.ini will be read and written directly from its <code>Saved\\Config\\WindowsServer\\</code> folder.</div>
+        <div class="gap-row">
+          <div style="flex:1">
+            <input type="text" id="import-dir" placeholder="e.g. C:\\ARKServer">
+          </div>
+          <button class="btn btn-ghost" id="import-browse">Browse…</button>
+          <button class="btn btn-primary" id="import-btn">Import</button>
+        </div>
+        <div id="import-result" style="margin-top:8px"></div>`;
+      c.appendChild(ic);
+
+      ic.querySelector('#import-browse').onclick = async () => {
+        const d = await API.browseFolder();
+        if (d) ic.querySelector('#import-dir').value = d;
+      };
+      ic.querySelector('#import-btn').onclick = async () => {
+        const dir = ic.querySelector('#import-dir').value.trim();
+        if (!dir) { toast('Select a server directory first', 'error'); return; }
+        const r = await API.importServer(dir);
+        const res = ic.querySelector('#import-result');
+        if (!r.ok) {
+          res.innerHTML = `<span class="text-red">✗ ${esc(r.error)}</span>`;
+          toast(r.error, 'error');
+          return;
+        }
+        const d2 = r.data;
+        const gameLabel = d2.game === 'asa' ? 'ARK: Survival Ascended' : 'ARK: Survival Evolved';
+        const detectedNote = d2.game_detected ? '' : ' <span style="color:var(--yellow)">(could not detect — set manually)</span>';
+        res.innerHTML = `<span class="text-green">✓ Imported</span> &nbsp;
+          Game: <strong>${esc(gameLabel)}</strong>${detectedNote} &nbsp;
+          GUS: ${d2.has_gus ? '<span class="text-green">found</span>' : '<span style="color:var(--yellow)">not found (will be created on first save)</span>'} &nbsp;
+          Game.ini: ${d2.has_game_ini ? '<span class="text-green">found</span>' : '<span style="color:var(--yellow)">not found</span>'}`;
+        State.profile.server_install_dir = d2.server_dir;
+        State.profile.game = d2.game;
+        // Sync the install-dir input on this page too
+        const installDirInput = si.querySelector('#install-dir');
+        if (installDirInput) installDirInput.value = d2.server_dir;
+        const gameSelect = si.querySelector('#game-select');
+        if (gameSelect) gameSelect.value = d2.game;
+        toast('Server imported', 'success');
+      };
+
       // Log card
       const lc = el('div','card');
       lc.style.flex = '1';
@@ -720,9 +767,8 @@ const Pages = {
       tb.style.flexWrap = 'wrap';
       tb.style.gap = '8px';
       tb.innerHTML = `
-        <button class="btn btn-primary" id="gus-save">💾 Save to Profile</button>
-        <button class="btn btn-ghost" id="gus-sync">⟳ Sync to Server</button>
-        <button class="btn btn-ghost" id="gus-load">↓ Load from Server</button>
+        <button class="btn btn-primary" id="gus-save">💾 Save</button>
+        <button class="btn btn-ghost" id="gus-load">↓ Reload from Disk</button>
         <select id="gus-preset" style="background:var(--bg3);border:1px solid var(--bg4);color:var(--fg);padding:6px 10px;border-radius:4px;font-size:13px">
           <option value="">- Apply Preset -</option>
           ${Object.keys(GUS_PRESETS).map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join('')}
@@ -787,7 +833,6 @@ const Pages = {
 
       // Wire up buttons
       tb.querySelector('#gus-save').onclick = () => this.save();
-      tb.querySelector('#gus-sync').onclick = () => this.sync();
       tb.querySelector('#gus-load').onclick = () => this.loadFromServer();
       tb.querySelector('#gus-preset').onchange = e => { if (e.target.value) this.applyPreset(e.target.value); e.target.value=''; };
 
@@ -966,9 +1011,8 @@ const Pages = {
       // Toolbar
       const tb = el('div','btn-row');
       tb.innerHTML = `
-        <button class="btn btn-primary" id="gi-save">💾 Save to Profile</button>
-        <button class="btn btn-ghost" id="gi-sync">⟳ Sync to Server</button>
-        <button class="btn btn-ghost" id="gi-load">↓ Load from Server</button>`;
+        <button class="btn btn-primary" id="gi-save">💾 Save</button>
+        <button class="btn btn-ghost" id="gi-load">↓ Reload from Disk</button>`;
       c.appendChild(tb);
 
       const tabs = makeInnerTabs([
@@ -982,7 +1026,6 @@ const Pages = {
       c.appendChild(tabs);
 
       tb.querySelector('#gi-save').onclick  = () => this.save();
-      tb.querySelector('#gi-sync').onclick  = () => this.sync();
       tb.querySelector('#gi-load').onclick  = () => this.loadFromServer();
 
       API.getGameIniValues().then(v => this._fillValues(v));
