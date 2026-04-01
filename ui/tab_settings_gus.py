@@ -1,5 +1,5 @@
 """
-GameUserSettings.ini — comprehensive visual editor.
+GameUserSettings.ini - comprehensive visual editor.
 Organized into inner notebook tabs with presets and tooltips.
 """
 from __future__ import annotations
@@ -244,10 +244,10 @@ class SettingsGUSTab(tk.Frame):
         # Presets
         tk.Label(toolbar, text="  Preset:", bg=BG2, fg=FG2,
                   font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=(24, 4))
-        self._preset_var = tk.StringVar(value="— choose —")
+        self._preset_var = tk.StringVar(value="- choose -")
         preset_combo = ttk.Combobox(
             toolbar, textvariable=self._preset_var,
-            values=["— choose —"] + list(PRESETS.keys()),
+            values=["- choose -"] + list(PRESETS.keys()),
             state="readonly", width=20,
         )
         preset_combo.pack(side=tk.LEFT, pady=6)
@@ -426,7 +426,7 @@ class SettingsGUSTab(tk.Frame):
                     var.set(value.lower() in ("true", "1"))
                 else:
                     var.set(value)
-        self._preset_var.set("— choose —")
+        self._preset_var.set("- choose -")
         messagebox.showinfo("Preset Applied",
                              f"'{name}' preset applied.\n"
                              "Click 'Save to Profile' to keep it.")

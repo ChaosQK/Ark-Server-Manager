@@ -21,7 +21,15 @@ from core.rcon_client import RconClient, RconError
 from core.update_checker import check_for_update
 
 MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(MANAGER_DIR, "config.json")
+
+# User data lives in %LOCALAPPDATA%\ARKServerManager so the install directory
+# can be read-only and config/profiles are not committed to source control.
+_APPDATA_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+    "ARKServerManager"
+)
+os.makedirs(_APPDATA_DIR, exist_ok=True)
+CONFIG_PATH = os.path.join(_APPDATA_DIR, "config.json")
 
 
 def _ok(data=None):
@@ -35,10 +43,10 @@ class Api:
     def __init__(self):
         self._config: dict = self._load_config()
         self._events: queue.Queue = queue.Queue()
-        self._server = ServerProcess(MANAGER_DIR)
+        self._server = ServerProcess(_APPDATA_DIR)
         self._server.add_status_callback(self._on_server_status)
         self._rcon = RconClient()
-        self._backup_mgr = BackupManager(MANAGER_DIR)
+        self._backup_mgr = BackupManager(_APPDATA_DIR)
         self._mod_mgr: ModManager | None = None
         self._steamcmd: SteamCMDRunner | None = None
         self._install_log_queue: queue.Queue = queue.Queue()
@@ -98,12 +106,22 @@ class Api:
         return self._config.setdefault("profiles", {}).setdefault(name, self._default_profile())
 
     def _gus_path(self, profile_name: str | None = None) -> str:
+        profile = self._get_profile(profile_name)
+        server_dir = profile.get("server_install_dir", "")
+        if server_dir:
+            return os.path.join(server_dir, "ShooterGame", "Saved",
+                                "Config", "WindowsServer", "GameUserSettings.ini")
         name = profile_name or self._config.get("active_profile", "default")
-        return os.path.join(MANAGER_DIR, "profiles", name, "GameUserSettings.ini")
+        return os.path.join(_APPDATA_DIR, "profiles", name, "GameUserSettings.ini")
 
     def _game_ini_path(self, profile_name: str | None = None) -> str:
+        profile = self._get_profile(profile_name)
+        server_dir = profile.get("server_install_dir", "")
+        if server_dir:
+            return os.path.join(server_dir, "ShooterGame", "Saved",
+                                "Config", "WindowsServer", "Game.ini")
         name = profile_name or self._config.get("active_profile", "default")
-        return os.path.join(MANAGER_DIR, "profiles", name, "Game.ini")
+        return os.path.join(_APPDATA_DIR, "profiles", name, "Game.ini")
 
     # ------------------------------------------------------------------ #
     #  Events (polled by JS every 200ms)                                   #
@@ -154,7 +172,7 @@ class Api:
     def save_profile_basic(self, data: dict):
         """Save server_install_dir, game, map into the active profile."""
         profile = self._get_profile()
-        for k in ("server_install_dir", "game", "map", "auto_restart",
+        for k in ("server_install_dir", "game", "map", "branch", "auto_restart",
                   "auto_restart_delay_seconds"):
             if k in data:
                 profile[k] = data[k]
@@ -188,33 +206,47 @@ class Api:
     # ------------------------------------------------------------------ #
 
     def get_gus_values(self):
-        """Return flat dict of all GUS key→value pairs."""
+        """Return flat dict of all GUS key→value pairs plus a __sections__ map."""
         path = self._gus_path()
         values = {}
+        sections_map = {}
         if os.path.isfile(path):
             ini = ArkIniFile(path)
             ini.load()
             for section in ini.get_sections():
                 for k, v in ini.get_section_items(section):
                     values[k] = v
+                    sections_map[k] = section
+        values["__sections__"] = sections_map
         return _ok(values)
 
-    def save_gus_values(self, values: dict):
-        """Write flat dict of key→value pairs to the profile's GUS.ini."""
+    def save_gus_values(self, values: dict, custom_entries=None):
+        """Write flat dict of key→value pairs to the profile's GUS.ini.
+        custom_entries is an optional list of {s, k, v} dicts for arbitrary keys."""
         from ui.tab_settings_gus import SECTIONS_FIELDS
         path = self._gus_path()
         os.makedirs(os.path.dirname(path), exist_ok=True)
         ini = ArkIniFile(path)
         if os.path.isfile(path):
             ini.load()
-        # Build key→section map
+        # Build key→section map from known fields
         key_section = {}
         for fields in SECTIONS_FIELDS.values():
             for f in fields:
                 key_section[f["k"]] = f["s"]
         for key, value in values.items():
+            if key == "__sections__":
+                continue
             section = key_section.get(key, "ServerSettings")
             ini.set_value(section, key, str(value))
+        # Write custom entries with their explicit sections
+        if custom_entries:
+            for entry in custom_entries:
+                s = str(entry.get("s", "ServerSettings")).strip()
+                k = str(entry.get("k", "")).strip()
+                v = str(entry.get("v", ""))
+                if k:
+                    ini.set_value(s, k, v)
         ini.save()
         return _ok()
 
@@ -224,21 +256,28 @@ class Api:
         if not server_dir:
             return _err("Server install directory not set")
         src = self._gus_path()
-        if not os.path.isfile(src):
-            return _err("Profile GUS.ini not found — save it first")
         dst_dir = os.path.join(server_dir, "ShooterGame", "Saved", "Config", "WindowsServer")
+        dst = os.path.join(dst_dir, "GameUserSettings.ini")
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return _ok()  # Already saving directly to server config
+        if not os.path.isfile(src):
+            return _err("Profile GUS.ini not found - save it first")
         os.makedirs(dst_dir, exist_ok=True)
-        shutil.copy2(src, os.path.join(dst_dir, "GameUserSettings.ini"))
+        shutil.copy2(src, dst)
         return _ok()
 
     def load_gus_from_server(self):
         profile = self._get_profile()
         server_dir = profile.get("server_install_dir", "")
+        if not server_dir:
+            return _err("Server install directory not set")
         src = os.path.join(server_dir, "ShooterGame", "Saved",
-                            "Config", "WindowsServer", "GameUserSettings.ini")
+                           "Config", "WindowsServer", "GameUserSettings.ini")
         if not os.path.isfile(src):
             return _err(f"File not found: {src}")
         dst = self._gus_path()
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return _ok()  # Already reading directly from server config
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copy2(src, dst)
         return _ok()
@@ -294,21 +333,28 @@ class Api:
         if not server_dir:
             return _err("Server install directory not set")
         src = self._game_ini_path()
-        if not os.path.isfile(src):
-            return _err("Profile Game.ini not found — save it first")
         dst_dir = os.path.join(server_dir, "ShooterGame", "Saved", "Config", "WindowsServer")
+        dst = os.path.join(dst_dir, "Game.ini")
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return _ok()  # Already saving directly to server config
+        if not os.path.isfile(src):
+            return _err("Profile Game.ini not found - save it first")
         os.makedirs(dst_dir, exist_ok=True)
-        shutil.copy2(src, os.path.join(dst_dir, "Game.ini"))
+        shutil.copy2(src, dst)
         return _ok()
 
     def load_game_ini_from_server(self):
         profile = self._get_profile()
         server_dir = profile.get("server_install_dir", "")
+        if not server_dir:
+            return _err("Server install directory not set")
         src = os.path.join(server_dir, "ShooterGame", "Saved",
-                            "Config", "WindowsServer", "Game.ini")
+                           "Config", "WindowsServer", "Game.ini")
         if not os.path.isfile(src):
             return _err(f"File not found: {src}")
         dst = self._game_ini_path()
+        if os.path.abspath(src) == os.path.abspath(dst):
+            return _ok()  # Already reading directly from server config
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         shutil.copy2(src, dst)
         return _ok()
@@ -332,7 +378,9 @@ class Api:
             auto_restart=profile.get("auto_restart", False),
             auto_restart_delay=profile.get("auto_restart_delay_seconds", 30),
         )
-        return _ok() if ok else _err("Failed to start — check that the server is installed")
+        if ok:
+            threading.Thread(target=self._start_server_log_drain, daemon=True).start()
+        return _ok() if ok else _err("Failed to start - check that the server is installed")
 
     def stop_server(self):
         self._server.stop(graceful=True)
@@ -392,31 +440,52 @@ class Api:
     def install_server(self):
         scmd = self._config.get("steamcmd_path", "") or find_steamcmd()
         if not scmd or not os.path.isfile(scmd):
-            return _err("SteamCMD not found — set the path or download it first")
+            return _err("SteamCMD not found - set the path or download it first")
         profile = self._get_profile()
         install_dir = profile.get("server_install_dir", "")
         if not install_dir:
             return _err("Server install directory not set")
         game = profile.get("game", "ase")
+        branch = profile.get("branch", "") or ""
         self._steamcmd.exe = scmd
         self._steamcmd.install_or_update_server(
-            install_dir, game, self._install_log_queue, self._on_install_done
+            install_dir, game, self._install_log_queue, self._on_install_done, branch=branch
         )
         # Drain install log queue to events
         threading.Thread(target=self._drain_install_log, daemon=True).start()
         return _ok()
 
     def _drain_install_log(self):
-        while self._server.status != "running":
-            while not self._install_log_queue.empty():
-                try:
-                    line = self._install_log_queue.get_nowait()
-                    self._push("install_log", line)
-                except queue.Empty:
+        import time
+        # Drain until the install_done callback sets a sentinel None
+        while True:
+            try:
+                line = self._install_log_queue.get(timeout=0.2)
+                if line is None:
                     break
-            import time; time.sleep(0.1)
+                self._push("install_log", line)
+            except queue.Empty:
+                continue
+
+    def _start_server_log_drain(self):
+        """Drain server log_queue into the in-memory buffer (ServerProcess._log_buffer).
+        We do NOT push server_log events - the JS logs page polls get_log_lines() instead,
+        which avoids flooding the event queue with thousands of lines and blocking the JS thread."""
+        while True:
+            try:
+                self._server.log_queue.get(timeout=1.0)
+                # ServerProcess._log() already writes to _log_buffer; just drain the queue
+            except queue.Empty:
+                if self._server.status == "stopped" and self._server.log_queue.empty():
+                    break
+
+    def get_log_lines(self, n: int = 500):
+        """Return the last n lines from the server log buffer."""
+        lines = list(self._server._log_buffer)[-int(n):]
+        return _ok(lines)
 
     def _on_install_done(self, success: bool):
+        self._install_log_queue.put(None)  # sentinel to stop drain thread
         self._push("install_done", {"ok": success,
                                      "msg": "Done!" if success else "Install failed."})
 
@@ -643,5 +712,36 @@ class Api:
     #  Misc                                                                #
     # ------------------------------------------------------------------ #
 
+    def import_server(self, server_dir: str):
+        """Import an existing ARK server installation into the active profile.
+        Auto-detects game type (ASE/ASA) and reports which config files are present."""
+        server_dir = server_dir.strip()
+        if not server_dir or not os.path.isdir(server_dir):
+            return _err(f"Directory not found: {server_dir}")
+
+        ase_exe = os.path.join(server_dir, "ShooterGame", "Binaries", "Win64", "ShooterGameServer.exe")
+        asa_exe = os.path.join(server_dir, "ShooterGame", "Binaries", "Win64", "ArkAscendedServer.exe")
+        if os.path.isfile(asa_exe):
+            game = "asa"
+        elif os.path.isfile(ase_exe):
+            game = "ase"
+        else:
+            game = None  # Can't detect; user can change it manually
+
+        profile = self._get_profile()
+        profile["server_install_dir"] = server_dir
+        if game:
+            profile["game"] = game
+        self._save_config()
+
+        cfg_dir = os.path.join(server_dir, "ShooterGame", "Saved", "Config", "WindowsServer")
+        return _ok({
+            "server_dir": server_dir,
+            "game": game or profile.get("game", "ase"),
+            "game_detected": game is not None,
+            "has_gus": os.path.isfile(os.path.join(cfg_dir, "GameUserSettings.ini")),
+            "has_game_ini": os.path.isfile(os.path.join(cfg_dir, "Game.ini")),
+        })
+
     def get_manager_dir(self):
-        return _ok(MANAGER_DIR)
+        return _ok(_APPDATA_DIR)

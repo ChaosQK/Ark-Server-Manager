@@ -1,4 +1,4 @@
-"""Logs tab — live server output with search and file browser."""
+"""Logs tab - live server output with search and file browser."""
 from __future__ import annotations
 import os
 import tkinter as tk

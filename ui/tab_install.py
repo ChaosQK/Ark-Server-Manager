@@ -1,4 +1,4 @@
-"""Install tab — SteamCMD path, server directory, install/update."""
+"""Install tab - SteamCMD path, server directory, install/update."""
 from __future__ import annotations
 import os
 import queue

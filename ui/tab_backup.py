@@ -1,4 +1,4 @@
-"""Backup tab — create, restore, schedule, and manage server backups."""
+"""Backup tab - create, restore, schedule, and manage server backups."""
 from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk, messagebox

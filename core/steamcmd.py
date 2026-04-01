@@ -26,6 +26,9 @@ def find_steamcmd(hint_dir: str = "") -> Optional[str]:
     """Try to locate steamcmd.exe. Returns path or None."""
     candidates = []
     if hint_dir:
+        # hint_dir may be a full exe path (stored after download) or a directory
+        if hint_dir.lower().endswith(".exe") and os.path.isfile(hint_dir):
+            return hint_dir
         candidates.append(os.path.join(hint_dir, "steamcmd.exe"))
     candidates += [
         r"C:\SteamCMD\steamcmd.exe",
@@ -92,23 +95,29 @@ class SteamCMDRunner:
         game: str,
         log_queue: "queue.Queue[str]",
         done_callback: Callable[[bool], None],
+        branch: str = "",
     ) -> None:
         """
         Run server install/update asynchronously.
         Lines go to log_queue. done_callback(success) called on finish.
+        branch: SteamCMD beta branch name, e.g. "experimental". Empty = Live (default).
         """
         appid = ASE_SERVER_APPID if game == "ase" else ASA_SERVER_APPID
         self._cancelled = False
 
         def _run():
             os.makedirs(install_dir, exist_ok=True)
+            app_update_args = [appid]
+            if branch:
+                app_update_args += ["-beta", branch]
+            app_update_args.append("validate")
             cmd = [
                 self.exe,
                 "+@ShutdownOnFailedCommand", "1",
                 "+@NoPromptForPassword", "1",
                 "+login", "anonymous",
                 "+force_install_dir", install_dir,
-                "+app_update", appid, "validate",
+                "+app_update", *app_update_args,
                 "+quit",
             ]
             log_queue.put(f"[SteamCMD] Starting: {' '.join(cmd)}\n")
